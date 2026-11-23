@@ -8,7 +8,12 @@ Requires Python 3.13, standard library only.
 The output directory defaults to /output (the grader's writable
 directory) and can be overridden with the MAKEFUN_OUTPUT_DIR
 environment variable, which is how the entry is tested locally.
+
+After copying, the destination is verified against the source
+(size and sha256) so a truncated or corrupted copy fails loudly
+instead of silently shipping a broken image.
 """
+import hashlib
 import os
 import shutil
 import sys
@@ -19,9 +24,31 @@ DST_DIR = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
 DST = os.path.join(DST_DIR, "entry.png")
 
 
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main() -> int:
     os.makedirs(DST_DIR, exist_ok=True)
     shutil.copyfile(SRC, DST)
+    src_size = os.path.getsize(SRC)
+    dst_size = os.path.getsize(DST)
+    if src_size != dst_size:
+        print(f"error: size mismatch after copy: "
+              f"source {src_size} bytes, destination {dst_size} bytes",
+              file=sys.stderr)
+        return 1
+    src_hash = _sha256(SRC)
+    dst_hash = _sha256(DST)
+    if src_hash != dst_hash:
+        print(f"error: sha256 mismatch after copy: "
+              f"source {src_hash}, destination {dst_hash}",
+              file=sys.stderr)
+        return 1
     return 0
 
 
